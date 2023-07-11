@@ -3,7 +3,7 @@
 import rospy
 import mavros_msgs
 from mavros_msgs import srv
-from mavros_msgs.srv import SetMode, CommandBool
+from mavros_msgs.srv import SetMode, CommandBool, CommandBoolRequest, SetModeRequest
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from mavros_msgs.msg import State, ExtendedState, PositionTarget
 from geographic_msgs.msg import GeoPoseStamped
@@ -13,7 +13,7 @@ import math
 import time
 #import LatLon 
 
-TOL = 0.5
+TOL = 0.05
 TOL_GLOBAL = 0.00001
 MAX_TIME_DISARM = 15
 ALT_TOL = 0.1
@@ -190,45 +190,41 @@ class MAV:
             return False
 
     def takeoff(self, height):
-        velocity = 1 # velocidade media
-
+        
+        arm_cmd = CommandBoolRequest()
+        arm_cmd.value = True
+        inicial_state_x = self.drone_pose.pose.position.x
+        inicial_state_y = self.drone_pose.pose.position.y
         for i in range(100):
-            self.set_position(self.drone_pose.pose.position.x, self.drone_pose.pose.position.y, 0)
+            if(rospy.is_shutdown()):
+                break
+            self.set_position(inicial_state_x, inicial_state_y, height)
             self.rate.sleep()
 
         self.set_mode("OFFBOARD", 2)
 
         if not self.drone_state.armed:
             rospy.logwarn("ARMING DRONE")
-            fb = self.arm(True)
-            while not fb.success:
+            
+            while not self.arm.call(arm_cmd).success:
                 if DEBUG:
                     rospy.logwarn("ARMING DRONE {}".format(fb))
-                fb = self.arm(True)
+                
                 self.rate.sleep()
             rospy.loginfo("DRONE ARMED")
         else:
             rospy.loginfo("DRONE ALREADY ARMED")
         self.rate.sleep()
         rospy.logwarn("EXECUTING TAKEOFF METHODS")
-        p = self.drone_pose.pose.position.z
-        time=0
-        while abs(self.drone_pose.pose.position.z - height) >= TOL and not rospy.is_shutdown():
-            time += 1/60.0#sec - init_time
-            if DEBUG:
-                rospy.logwarn('TAKING OFF AT ' + str(velocity) + ' m/s')   
-            
-            if p < height:
-                p = ((-2 * (velocity**3) * (time**3)) / height**2) + ((3*(time**2) * (velocity**2))/height)
-                self.set_position(self.drone_pose.pose.position.x, self.drone_pose.pose.position.y, p)
-
-            else:
-                self.set_position(self.drone_pose.pose.position.x, self.drone_pose.pose.position.y, height)
+        
+        
+        while not self.chegou() and not rospy.is_shutdown():            
+            self.set_position(inicial_state_x, inicial_state_y, height)
 
             #rospy.loginfo('Position: (' + str(self.drone_pose.pose.position.x) + ', ' + str(self.drone_pose.pose.position.y) + ', '+ str(self.drone_pose.pose.position.z) + ')')
 
         self.rate.sleep()
-        self.set_position(self.drone_pose.pose.position.x, self.drone_pose.pose.position.y, height)
+        #self.set_position(self.drone_pose.pose.position.x, self.drone_pose.pose.position.y, height)
         rospy.loginfo("TAKEOFF FINISHED")
         
         return "done"
@@ -274,12 +270,13 @@ class MAV:
 
     def hold(self, time):
         now = rospy.Time.now()
+        inicial_position = self.drone_pose
         while not rospy.Time.now() - now > rospy.Duration(secs=time):
-            self.local_position_pub.publish(self.drone_pose)
+            self.local_position_pub.publish(inicial_position)
             self.rate.sleep()
 
     def land(self):
-        velocity = 0.7
+        velocity = 0.3
         init_time = rospy.get_rostime().secs
         height = self.drone_pose.pose.position.z
         self.set_position(self.drone_pose.pose.position.x, self.drone_pose.pose.position.y,0)
