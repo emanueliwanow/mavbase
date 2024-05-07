@@ -11,6 +11,7 @@ from sensor_msgs.msg import BatteryState, NavSatFix
 import numpy as np
 import math
 import time
+import copy
 #import LatLon 
 
 TOL = 0.05
@@ -270,7 +271,7 @@ class MAV:
 
     def hold(self, time):
         now = rospy.Time.now()
-        inicial_position = self.drone_pose
+        inicial_position = copy.deepcopy(self.drone_pose)
         while not rospy.Time.now() - now > rospy.Duration(secs=time):
             self.local_position_pub.publish(inicial_position)
             self.rate.sleep()
