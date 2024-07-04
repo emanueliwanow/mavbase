@@ -8,6 +8,7 @@ from geometry_msgs.msg import PoseStamped, TwistStamped
 from mavros_msgs.msg import State, ExtendedState, PositionTarget
 from geographic_msgs.msg import GeoPoseStamped
 from sensor_msgs.msg import BatteryState, NavSatFix
+from tf.transformations import quaternion_from_euler, euler_from_quaternion
 import numpy as np
 import math
 import time
@@ -147,6 +148,22 @@ class MAV:
         self.goal_pose.pose.position.z = z
         self.local_position_pub.publish(self.goal_pose)
         self.rate.sleep()
+    
+    def set_position_with_yaw(self, x, y, z, yaw=0):
+        self.goal_pose.pose.position.x = x
+        self.goal_pose.pose.position.y = y
+        self.goal_pose.pose.position.z = z
+
+        q = quaternion_from_euler(0,0,yaw)
+
+        self.goal_pose.pose.orientation.x = q[0]
+        self.goal_pose.pose.orientation.y = q[1]
+        self.goal_pose.pose.orientation.z = q[2]
+        self.goal_pose.pose.orientation.w = q[3]
+
+        self.local_position_pub.publish(self.goal_pose)
+        self.rate.sleep()
+
 
     def set_vel(self, x, y, z, roll=0, pitch=0, yaw=0):
         self.goal_vel.twist.linear.x = x
