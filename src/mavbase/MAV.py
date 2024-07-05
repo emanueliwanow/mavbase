@@ -16,6 +16,7 @@ import copy
 #import LatLon 
 
 TOL = 0.05
+TOL_Q= 0.05
 TOL_GLOBAL = 0.00001
 MAX_TIME_DISARM = 15
 ALT_TOL = 0.1
@@ -162,7 +163,9 @@ class MAV:
         self.goal_pose.pose.orientation.w = q[3]
 
         self.local_position_pub.publish(self.goal_pose)
-        self.rate.sleep()
+        while not self.arrived_setpoint():
+            self.local_position_pub.publish(self.goal_pose)
+            self.rate.sleep()
 
 
     def set_vel(self, x, y, z, roll=0, pitch=0, yaw=0):
@@ -201,8 +204,15 @@ class MAV:
                 rospy.logerr(e)
 
 
-    def chegou(self):
-        if (abs(self.goal_pose.pose.position.x - self.drone_pose.pose.position.x) < TOL) and (abs(self.goal_pose.pose.position.y - self.drone_pose.pose.position.y) < TOL) and (abs(self.goal_pose.pose.position.z - self.drone_pose.pose.position.z) < TOL):
+    def arrived_setpoint(self):
+        if ((abs(self.goal_pose.pose.position.x - self.drone_pose.pose.position.x) < TOL) and
+            (abs(self.goal_pose.pose.position.y - self.drone_pose.pose.position.y) < TOL) and
+            (abs(self.goal_pose.pose.position.z - self.drone_pose.pose.position.z) < TOL) and
+            (abs(self.goal_pose.pose.orientation.x - self.drone_pose.pose.orientation.x) < TOL_Q) and
+            (abs(self.goal_pose.pose.orientation.y - self.drone_pose.pose.orientation.y) < TOL_Q) and
+            (abs(self.goal_pose.pose.orientation.z - self.drone_pose.pose.orientation.z) < TOL_Q) and
+            (abs(self.goal_pose.pose.orientation.w - self.drone_pose.pose.orientation.w) < TOL_Q)):
+           
             return True
         else:
             return False
