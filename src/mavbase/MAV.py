@@ -16,7 +16,8 @@ import copy
 #import LatLon 
 
 TOL = 0.05
-TOL_Q= 0.05
+TOL_Q= 2*math.pi/180
+TOL_yaw = 0.05
 TOL_GLOBAL = 0.00001
 MAX_TIME_DISARM = 15
 ALT_TOL = 0.1
@@ -113,6 +114,10 @@ class MAV:
         self.drone_pose.pose.position.x = local.pose.position.x
         self.drone_pose.pose.position.y = local.pose.position.y
         self.drone_pose.pose.position.z = local.pose.position.z
+        self.drone_pose.pose.orientation.x = local.pose.orientation.x
+        self.drone_pose.pose.orientation.y = local.pose.orientation.y
+        self.drone_pose.pose.orientation.z = local.pose.orientation.z
+        self.drone_pose.pose.orientation.w = local.pose.orientation.w
 
     def extended_state_callback(self, es_data):
         self.LAND_STATE = es_data.landed_state
@@ -143,12 +148,6 @@ class MAV:
 
         self.target_pub.publish(self.pose_target)
 
-    def set_position(self, x, y, z):
-        self.goal_pose.pose.position.x = x
-        self.goal_pose.pose.position.y = y
-        self.goal_pose.pose.position.z = z
-        self.local_position_pub.publish(self.goal_pose)
-        self.rate.sleep()
     
     def set_position_with_yaw(self, x, y, z, yaw=0):
         self.goal_pose.pose.position.x = x
@@ -166,6 +165,20 @@ class MAV:
         while not self.arrived_setpoint():
             self.local_position_pub.publish(self.goal_pose)
             self.rate.sleep()
+            
+    def set_position_with_yaw_woCheck(self, x, y, z, yaw=0):
+        self.goal_pose.pose.position.x = x
+        self.goal_pose.pose.position.y = y
+        self.goal_pose.pose.position.z = z
+
+        q = quaternion_from_euler(0,0,yaw)
+
+        self.goal_pose.pose.orientation.x = q[0]
+        self.goal_pose.pose.orientation.y = q[1]
+        self.goal_pose.pose.orientation.z = q[2]
+        self.goal_pose.pose.orientation.w = q[3]
+
+        self.local_position_pub.publish(self.goal_pose)
 
 
     def set_vel(self, x, y, z, roll=0, pitch=0, yaw=0):
@@ -205,19 +218,19 @@ class MAV:
 
 
     def arrived_setpoint(self):
+        euler = euler_from_quaternion([self.goal_pose.pose.orientation.x, self.goal_pose.pose.orientation.y, self.goal_pose.pose.orientation.z, self.goal_pose.pose.orientation.w])
+        euler_cur = euler_from_quaternion([self.drone_pose.pose.orientation.x, self.drone_pose.pose.orientation.y, self.drone_pose.pose.orientation.z, self.drone_pose.pose.orientation.w])
+        
+    	
         if ((abs(self.goal_pose.pose.position.x - self.drone_pose.pose.position.x) < TOL) and
             (abs(self.goal_pose.pose.position.y - self.drone_pose.pose.position.y) < TOL) and
             (abs(self.goal_pose.pose.position.z - self.drone_pose.pose.position.z) < TOL) and
-            (abs(self.goal_pose.pose.orientation.x - self.drone_pose.pose.orientation.x) < TOL_Q) and
-            (abs(self.goal_pose.pose.orientation.y - self.drone_pose.pose.orientation.y) < TOL_Q) and
-            (abs(self.goal_pose.pose.orientation.z - self.drone_pose.pose.orientation.z) < TOL_Q) and
-            (abs(self.goal_pose.pose.orientation.w - self.drone_pose.pose.orientation.w) < TOL_Q)):
-           
+            (abs(euler[2] - euler_cur[2]) < TOL_yaw)):
             return True
         else:
             return False
 
-    def takeoff(self, height):
+    def takeoff(self, height,yaw=0):
         
         arm_cmd = CommandBoolRequest()
         arm_cmd.value = True
@@ -226,7 +239,7 @@ class MAV:
         for i in range(100):
             if(rospy.is_shutdown()):
                 break
-            self.set_position(inicial_state_x, inicial_state_y, height)
+            self.set_position_with_yaw_woCheck(inicial_state_x, inicial_state_y, height,yaw)
             self.rate.sleep()
 
         self.set_mode("OFFBOARD", 2)
@@ -246,10 +259,53 @@ class MAV:
         rospy.logwarn("EXECUTING TAKEOFF METHODS")
         
         
-        while not self.chegou() and not rospy.is_shutdown():            
-            self.set_position(inicial_state_x, inicial_state_y, height)
+                 
+        self.set_position_with_yaw(inicial_state_x, inicial_state_y, height,yaw)
 
-            #rospy.loginfo('Position: (' + str(self.drone_pose.pose.position.x) + ', ' + str(self.drone_pose.pose.position.y) + ', '+ str(self.drone_pose.pose.position.z) + ')')
+        #rospy.loginfo('Position: (' + str(self.drone_pose.pose.position.x) + ', ' + str(self.drone_pose.pose.position.y) + ', '+ str(self.drone_pose.pose.position.z) + ')')
+
+        self.rate.sleep()
+        #self.set_position(self.drone_pose.pose.position.x, self.drone_pose.pose.position.y, height)
+        rospy.loginfo("TAKEOFF FINISHED")
+        
+        return "done"
+    
+    def takeoff_and_keep_yaw(self, height):
+        
+        arm_cmd = CommandBoolRequest()
+        arm_cmd.value = True
+        inicial_state_x = self.drone_pose.pose.position.x
+        inicial_state_y = self.drone_pose.pose.position.y
+        inicial_q = self.drone_pose.pose.orientation
+        _, _, init_yaw = euler_from_quaternion([inicial_q.x, inicial_q.y, inicial_q.z, inicial_q.w])
+        
+        for i in range(100):
+            if(rospy.is_shutdown()):
+                break
+            self.set_position_with_yaw_woCheck(inicial_state_x, inicial_state_y, height,init_yaw)
+            self.rate.sleep()
+
+        self.set_mode("OFFBOARD", 2)
+
+        if not self.drone_state.armed:
+            rospy.logwarn("ARMING DRONE")
+            
+            while not self.arm.call(arm_cmd).success:
+                if DEBUG:
+                    rospy.logwarn("ARMING DRONE {}".format(fb))
+                
+                self.rate.sleep()
+            rospy.loginfo("DRONE ARMED")
+        else:
+            rospy.loginfo("DRONE ALREADY ARMED")
+        self.rate.sleep()
+        rospy.logwarn("EXECUTING TAKEOFF METHODS")
+        
+        
+                 
+        self.set_position_with_yaw(inicial_state_x, inicial_state_y, height,init_yaw)
+
+        #rospy.loginfo('Position: (' + str(self.drone_pose.pose.position.x) + ', ' + str(self.drone_pose.pose.position.y) + ', '+ str(self.drone_pose.pose.position.z) + ')')
 
         self.rate.sleep()
         #self.set_position(self.drone_pose.pose.position.x, self.drone_pose.pose.position.y, height)
@@ -307,7 +363,7 @@ class MAV:
         velocity = 0.3
         init_time = rospy.get_rostime().secs
         height = self.drone_pose.pose.position.z
-        self.set_position(self.drone_pose.pose.position.x, self.drone_pose.pose.position.y,0)
+        self.set_position_with_yaw_woCheck(self.drone_pose.pose.position.x, self.drone_pose.pose.position.y,0)
         self.rate.sleep()
         rospy.logwarn('Landing')
         while not self.LAND_STATE == ExtendedState.LANDED_STATE_ON_GROUND or rospy.get_rostime().secs - init_time < (height/velocity)*1.3:
