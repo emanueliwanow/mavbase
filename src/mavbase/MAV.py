@@ -287,6 +287,12 @@ class MAV:
 
         self.set_mode("OFFBOARD", 2)
 
+        for i in range(100):
+            if(rospy.is_shutdown()):
+                break
+            self.set_position_with_yaw_woCheck(inicial_state_x, inicial_state_y, height,init_yaw)
+            self.rate.sleep()
+
         if not self.drone_state.armed:
             rospy.logwarn("ARMING DRONE")
             
