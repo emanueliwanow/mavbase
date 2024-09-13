@@ -15,7 +15,7 @@ import time
 import copy
 #import LatLon 
 
-TOL = 0.05
+TOL = 0.1
 TOL_Q= 2*math.pi/180
 TOL_yaw = 0.05
 TOL_GLOBAL = 0.00001
@@ -165,6 +165,20 @@ class MAV:
         while not self.arrived_setpoint():
             self.local_position_pub.publish(self.goal_pose)
             self.rate.sleep()
+
+    def follow_path(self,path,z):
+        for pose in path.poses:
+            self.goal_pose.pose.position.x = pose.pose.position.x
+            self.goal_pose.pose.position.y = pose.pose.position.y
+            self.goal_pose.pose.position.z = z
+
+            
+
+            self.local_position_pub.publish(self.goal_pose)
+            while not self.arrived_setpoint() and not rospy.is_shutdown():
+                self.local_position_pub.publish(self.goal_pose)
+                self.rate.sleep()
+
             
     def set_position_with_yaw_woCheck(self, x, y, z, yaw=0):
         self.goal_pose.pose.position.x = x
